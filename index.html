@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--
+    Visor offline del archivo de X de @xelaing — single file, vanilla, sin build.
+    Abre con doble click (file://). 100% client-side, CERO red.
+    CSP: connect-src 'none' mata fetch/XHR/websocket/beacon sin tocar la carga local.
+    Fase A: core · Fase B: vistas (hilos/stats/efemérides/filtros/likes) · Fase C: estética.
+    Estética: archivo de recuerdos — papel cálido, serif de display del sistema para
+    fechas/títulos/años, sans para el cuerpo, mucho aire, navegación por épocas.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="connect-src 'none'; object-src 'none'; base-uri 'none'">
+  <title>Archivo de @xelaing</title>
+  <style>
+    /* ===================== TEMA (Fase C) ===================== */
+    :root{
+      --paper:#f5efe2;        /* marfil cálido */
+      --paper-2:#fbf7ee;      /* superficies levemente elevadas */
+      --ink:#2a2620;          /* tinta sepia oscura */
+      --ink-soft:#5b5346;
+      --muted:#9a8d77;        /* taupe */
+      --line:#e4d8c2;         /* hairline cálido */
+      --accent:#a8552b;       /* terracota */
+      --gold:#b7913f;         /* dorado apagado (épocas) */
+      --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,Cambria,"Times New Roman",serif;
+      --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+      --measure:632px;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0}
+    [hidden]{display:none!important}
+    body{background:var(--paper);color:var(--ink);font-family:var(--sans);
+      font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+    ::selection{background:rgba(168,85,43,.18)}
+    a{color:var(--accent);text-decoration:none}
+    a:hover{text-decoration:underline;text-underline-offset:2px}
+    #main{max-width:var(--measure);margin:0 auto;padding:0 20px 36vh}
+
+    /* ---------- perfil ---------- */
+    #profile{padding-top:26px}
+    #banner{height:172px;border-radius:18px;background:#e6ddca center/cover no-repeat;
+      box-shadow:0 1px 0 rgba(0,0,0,.04), inset 0 0 0 1px rgba(0,0,0,.03)}
+    #avatar{width:92px;height:92px;border-radius:50%;border:4px solid var(--paper);
+      margin:-50px 0 0 8px;background:#d8ccb4 center/cover no-repeat;
+      box-shadow:0 2px 10px rgba(0,0,0,.12)}
+    #pname{font-family:var(--serif);font-size:34px;font-weight:600;letter-spacing:-.01em;margin:14px 0 0}
+    #phandle{color:var(--muted);font-size:15px;margin-top:2px}
+    #pbio{margin:12px 0 2px;max-width:54ch;color:var(--ink-soft)}
+    #pmeta{color:var(--muted);font-size:14px;display:flex;flex-wrap:wrap;gap:16px;margin-top:8px}
+    #pcounts{display:flex;gap:22px;margin:16px 0 2px;font-size:14px;color:var(--muted)}
+    #pcounts b{font-family:var(--serif);font-size:19px;color:var(--ink);font-weight:600;margin-right:4px}
+
+    /* ---------- nav de vistas ---------- */
+    #nav{position:sticky;top:0;z-index:6;display:flex;gap:22px;flex-wrap:wrap;
+      padding:14px 0 10px;margin-top:20px;
+      background:linear-gradient(var(--paper) 78%, rgba(245,239,226,0));border-bottom:1px solid var(--line)}
+    .nav-btn{font:inherit;font-size:15px;color:var(--muted);background:none;border:none;
+      padding:4px 0;cursor:pointer;position:relative}
+    .nav-btn:hover{color:var(--ink)}
+    .nav-btn.active{color:var(--ink);font-weight:600}
+    .nav-btn.active::after{content:"";position:absolute;left:0;right:0;bottom:-11px;height:2px;background:var(--accent)}
+
+    .count{color:var(--muted);font-size:13.5px;margin:14px 0 0;font-style:italic}
+
+    /* ---------- timeline: búsqueda, épocas, filtros ---------- */
+    .search-row{display:flex;gap:10px;align-items:center;margin-top:16px}
+    #f-q{flex:1;padding:11px 14px;border:1px solid var(--line);border-radius:11px;
+      font:inherit;background:var(--paper-2);color:var(--ink)}
+    #f-q:focus{outline:none;border-color:var(--accent)}
+    #f-toggle{font:inherit;font-size:14px;color:var(--muted);background:var(--paper-2);
+      border:1px solid var(--line);border-radius:11px;padding:11px 14px;cursor:pointer;white-space:nowrap}
+    #f-toggle:hover{color:var(--ink)}
+
+    .epochs{display:flex;gap:4px;overflow-x:auto;padding:14px 0 2px;scrollbar-width:thin}
+    .epoch-chip{font:inherit;font-size:14px;color:var(--muted);background:none;border:none;
+      padding:5px 10px;border-radius:999px;cursor:pointer;white-space:nowrap}
+    .epoch-chip:hover{color:var(--ink);background:rgba(0,0,0,.03)}
+    .epoch-chip.active{color:var(--paper);background:var(--accent);font-weight:600}
+
+    #adv{padding:8px 0 2px}
+    .frow{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:8px}
+    .frow select{padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--paper-2);color:var(--ink);font:inherit}
+    .frow label{display:inline-flex;align-items:center;gap:6px;font-size:14px;color:var(--ink-soft)}
+    .frow accent{accent-color:var(--accent)}
+    .frow input[type=checkbox]{accent-color:var(--accent)}
+    #f-clear{font:inherit;border:none;background:none;color:var(--accent);cursor:pointer;padding:8px 0;font-size:14px}
+
+    /* ---------- divisor de época (año) ---------- */
+    .epoch-div{font-family:var(--serif);font-size:58px;line-height:1;color:var(--gold);
+      font-weight:600;letter-spacing:-.01em;margin:54px 0 6px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+    .epoch-div:first-child{margin-top:26px}
+
+    /* ---------- entrada (tweet) ---------- */
+    .tw{padding:22px 2px;border-bottom:1px solid var(--line)}
+    .tw-h{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+    .tw-date{font-family:var(--serif);font-size:16px;color:var(--ink-soft)}
+    .tw-date:hover{color:var(--accent);text-decoration:none}
+    .tw-badge{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+    .tw-note{color:var(--muted);font-size:13.5px;margin-top:5px;font-style:italic}
+    .tw-text{margin-top:8px;word-wrap:break-word;overflow-wrap:anywhere}
+    .mention,.hashtag{color:var(--accent);cursor:pointer}
+    .tw-meta{display:flex;gap:20px;color:var(--muted);font-size:13px;margin-top:12px}
+
+    /* media */
+    .tw-media{margin-top:12px;display:grid;gap:5px;border-radius:14px;overflow:hidden;max-width:100%}
+    .tw-media.g1{grid-template-columns:1fr}
+    .tw-media.g2,.tw-media.g3,.tw-media.g4{grid-template-columns:1fr 1fr}
+    .tw-media img,.tw-media video{width:100%;height:100%;object-fit:cover;display:block;max-height:540px;background:#ece3d1}
+    .tw-media.g1 img,.tw-media.g1 video{object-fit:contain;max-height:580px}
+    .media-missing{padding:16px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:13px;text-align:center;background:var(--paper-2)}
+
+    /* ---------- hilos ---------- */
+    .thread{border-left:2px solid var(--accent);padding:2px 0 2px 18px;margin:30px 0;
+      background:linear-gradient(90deg, rgba(168,85,43,.04), transparent 60%)}
+    .thread-head{font-family:var(--serif);color:var(--muted);font-size:14px;margin:8px 0}
+    .thread .tw{border-bottom:1px solid var(--line)}
+    .thread .tw:last-child{border-bottom:none}
+
+    /* ---------- efemérides ---------- */
+    #otd-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0 4px;color:var(--ink-soft)}
+    #otd-controls b{font-family:var(--serif)}
+    #otd-controls input{padding:8px 10px;border:1px solid var(--line);border-radius:9px;font:inherit;background:var(--paper-2);color:var(--ink)}
+    .year-head{font-family:var(--serif);font-size:30px;color:var(--gold);font-weight:600;margin:30px 0 2px}
+
+    /* ---------- likes ---------- */
+    .like{padding:16px 2px;border-bottom:1px solid var(--line)}
+    .like-text{word-wrap:break-word;overflow-wrap:anywhere}
+    .like-missing .like-text{color:var(--muted);font-style:italic}
+    .like-link{display:inline-block;margin-top:8px;font-size:12px;color:var(--muted)}
+
+    /* ---------- stats ---------- */
+    #stats h2{font-family:var(--serif);font-size:24px;margin:34px 0 12px;font-weight:600}
+    .stat-cards{display:flex;flex-wrap:wrap;gap:12px}
+    .stat-card{flex:1;min-width:104px;background:var(--paper-2);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+    .stat-card b{font-family:var(--serif);font-size:27px;display:block;font-weight:600}
+    .stat-card span{color:var(--muted);font-size:13px}
+    .bar-row{display:flex;align-items:center;gap:10px;margin:4px 0;cursor:pointer}
+    .bar-row .yr{width:46px;color:var(--ink-soft);font-family:var(--serif);font-size:14px;text-align:right}
+    .bar-row .bar{height:18px;background:linear-gradient(90deg,var(--accent),var(--gold));border-radius:5px;min-width:2px;opacity:.9}
+    .bar-row .bn{font-size:12px;color:var(--muted)}
+    .bar-row:hover .bar{opacity:1}
+    .chips{display:flex;flex-wrap:wrap;gap:8px}
+    .chip{border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:13.5px;cursor:pointer;background:var(--paper-2)}
+    .chip:hover{border-color:var(--accent)}
+    .chip b{color:var(--accent);font-weight:600}
+    .toprow{padding:12px 0;border-bottom:1px solid var(--line);font-size:15px}
+    .toprow .tn{color:var(--muted);font-size:12px;font-family:var(--serif)}
+
+    /* ---------- estados ---------- */
+    #status{padding:74px 16px;text-align:center;color:var(--muted)}
+    .sentinel{height:1px}
+    .spinner{display:inline-block;width:22px;height:22px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;vertical-align:-5px;margin-right:8px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* ---------- permalink overlay ---------- */
+    #permalink{position:fixed;inset:0;background:rgba(42,38,32,.42);display:none;z-index:20;overflow:auto;padding:48px 16px}
+    #permalink.open{display:block}
+    #permalink-inner{max-width:var(--measure);margin:0 auto;background:var(--paper);border-radius:18px;
+      padding:12px 24px 28px;box-shadow:0 18px 60px rgba(0,0,0,.22)}
+    #permalink .back{display:inline-block;margin:8px 0;cursor:pointer;color:var(--accent);background:none;border:none;font:inherit;font-size:15px;padding:6px 0}
+    #permalink .tw{border-bottom:none}
+    #permalink .tw-text{font-size:22px;line-height:1.5}
+
+    @media (max-width:520px){
+      #pname{font-size:29px}
+      .epoch-div{font-size:46px}
+      #main{padding:0 16px 36vh}
+    }
+  </style>
+</head>
+<body>
+  <div id="main">
+    <header id="profile" hidden></header>
+
+    <nav id="nav" hidden>
+      <button class="nav-btn active" data-view="timeline">Tweets</button>
+      <button class="nav-btn" data-view="threads">Hilos</button>
+      <button class="nav-btn" data-view="onthisday">Tal día como hoy</button>
+      <button class="nav-btn" data-view="likes">Likes</button>
+      <button class="nav-btn" data-view="stats">Stats</button>
+    </nav>
+
+    <main id="views" hidden>
+      <section class="view" id="view-timeline">
+        <div id="filters"></div>
+        <div id="count" class="count"></div>
+        <div id="feed"></div>
+      </section>
+      <section class="view" id="view-threads" hidden>
+        <div id="threads-info" class="count"></div>
+        <div id="threads"></div>
+      </section>
+      <section class="view" id="view-onthisday" hidden>
+        <div id="otd-controls"></div>
+        <div id="otd"></div>
+      </section>
+      <section class="view" id="view-likes" hidden>
+        <div id="likes-controls"></div>
+        <div id="likes-count" class="count"></div>
+        <div id="likes"></div>
+      </section>
+      <section class="view" id="view-stats" hidden>
+        <div id="stats"></div>
+      </section>
+    </main>
+
+    <div id="status"><span class="spinner"></span>Leyendo el manifiesto…</div>
+  </div>
+
+  <div id="permalink"><div id="permalink-inner"></div></div>
+
+  <!-- manifest.js define window.__THAR_CONFIG -->
+  <script src="./data/twitter/data/manifest.js"></script>
+
+  <script>
+  'use strict';
+  (function(){
+
+  /* ===================== CONFIG ===================== */
+  const EXPORT_ROOT = './data/twitter';        // raíz del export de X (la carpeta descargada, renombrada a "twitter")
+  const DATA_DIR = EXPORT_ROOT + '/data';      // dentro del export, X guarda todo bajo data/
+  const TWEETS_MEDIA_DIR = DATA_DIR + '/tweets_media';
+  const PROFILE_MEDIA_DIR = DATA_DIR + '/profile_media';
+  const WANT_TYPES = ['tweets', 'account', 'profile'];   // 'like' se carga lazy
+  const MES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const MES_LARGO = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+  /* ===================== ESTADO ===================== */
+  const state = {
+    account:null, profile:null, cfg:null,
+    tweets:[], byId:new Map(), counts:{own:0,reply:0,retweet:0,media:0},
+    years:[], year:null, order:'desc',   // year = época activa (null=todas); order = cronológico (desc/asc)
+    likes:null, threads:null, stats:null,
+    currentView:'timeline'
+  };
+
+  /* ===================== UTILS ===================== */
+  const num = (x)=>{ const n=parseInt(x,10); return Number.isFinite(n)?n:0; };
+  function escapeHtml(s){
+    return String(s==null?'':s).replace(/[&<>"']/g, c=>(
+      {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function fmtDate(ts){ if(!Number.isFinite(ts)) return ''; const d=new Date(ts);
+    return d.getDate()+' '+MES[d.getMonth()]+' '+d.getFullYear(); }
+  function fmtDateTime(ts){ if(!Number.isFinite(ts)) return ''; const d=new Date(ts);
+    return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+' · '+fmtDate(ts); }
+  function fmtCount(n){ if(n>=1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'')+'M';
+    if(n>=1e3) return (n/1e3).toFixed(1).replace(/\.0$/,'')+'k'; return String(n); }
+  const nf = (n)=> n.toLocaleString('es');
+  function deepGet(path){ return path.split('.').reduce((o,k)=>(o==null?undefined:o[k]), window); }
+  function ensureParent(path){ const p=path.split('.'); let o=window;
+    for(let i=0;i<p.length-1;i++){ if(o[p[i]]==null) o[p[i]]={}; o=o[p[i]]; } }
+
+  /* ===================== CARGA (manifest-aware) ===================== */
+  function loadScript(src){
+    return new Promise((resolve)=>{ const s=document.createElement('script'); s.src=src;
+      s.onload=()=>resolve(true); s.onerror=()=>{ console.warn('No se pudo cargar', src); resolve(false); };
+      document.head.appendChild(s); });
+  }
+  function collect(type){
+    const dt=state.cfg.dataTypes[type]; if(!dt||!dt.files) return [];
+    return dt.files.reduce((a,f)=>a.concat(deepGet(f.globalName)||[]), []);
+  }
+  async function loadArchive(){
+    const cfg=window.__THAR_CONFIG;
+    if(!cfg||!cfg.dataTypes) throw new Error('manifest.js no definió __THAR_CONFIG');
+    state.cfg=cfg;
+    const files=[];
+    for(const type of WANT_TYPES){ const dt=cfg.dataTypes[type]; if(!dt||!dt.files) continue;
+      for(const f of dt.files){ ensureParent(f.globalName); files.push(EXPORT_ROOT+'/'+f.fileName); } }
+    await Promise.all(files.map(loadScript));
+    state.account=(collect('account')[0]||{}).account||null;
+    state.profile=(collect('profile')[0]||{}).profile||null;
+    return collect('tweets');
+  }
+  async function ensureLikes(){
+    if(state.likes) return state.likes;
+    const dt=state.cfg.dataTypes.like;
+    if(!dt||!dt.files){ state.likes=[]; return state.likes; }
+    for(const f of dt.files) ensureParent(f.globalName);
+    await Promise.all(dt.files.map(f=>loadScript(EXPORT_ROOT+'/'+f.fileName)));
+    const arr=dt.files.reduce((a,f)=>a.concat(deepGet(f.globalName)||[]), []);
+    state.likes=arr.map(it=>it.like).filter(Boolean);
+    for(const l of state.likes) l._search=(l.fullText||'').toLowerCase();
+    return state.likes;
+  }
+
+  /* ===================== ÍNDICE + CLASIFICACIÓN ===================== */
+  function classify(t){
+    if(t.in_reply_to_status_id_str) return 'reply';
+    if((t.full_text||'').startsWith('RT @')) return 'retweet';
+    return 'own';
+  }
+  function buildIndex(rawTweets){
+    const tweets=[], byId=new Map(), counts={own:0,reply:0,retweet:0,media:0};
+    const years=new Set();
+    for(const item of rawTweets){
+      const t=item&&item.tweet; if(!t) continue;
+      const d=new Date(t.created_at);
+      t._ts=d.getTime(); t._year=d.getFullYear(); t._month=d.getMonth()+1; t._day=d.getDate();
+      t._monthday=t._month*100+t._day;
+      const urlTxt=((t.entities&&t.entities.urls)||[]).map(u=>(u.expanded_url||'')+' '+(u.display_url||'')).join(' ');
+      t._search=((t.full_text||'')+' '+urlTxt).toLowerCase();   // incluye dominios de los links
+      t._kind=classify(t);
+      t._media=resolveMedia(t); t._hasMedia=t._media.length>0;
+      t._geo=!!(t.coordinates||t.geo);   // possibly_sensitive existe pero es false en todo el archivo → no se usa
+      counts[t._kind]++; if(t._hasMedia) counts.media++;
+      years.add(t._year); tweets.push(t); byId.set(t.id_str, t);
+    }
+    tweets.sort((a,b)=>b._ts-a._ts);
+    state.tweets=tweets; state.byId=byId; state.counts=counts;
+    state.years=[...years].sort((a,b)=>b-a);
+  }
+
+  /* ===================== MEDIA (RECON §3.3/§3.4) ===================== */
+  function isPortrait(m){ const s=m.sizes&&(m.sizes.small||m.sizes.medium||m.sizes.large);
+    return !!(s&&num(s.h)>num(s.w)); }
+  function resolveMedia(t){
+    const media=t.extended_entities&&t.extended_entities.media;
+    if(!media||!media.length) return [];
+    const out=[];
+    for(const m of media){
+      if(m.type==='photo'){
+        const base=(m.media_url_https||m.media_url||'').split('/').pop();
+        if(base) out.push({kind:'photo', src:TWEETS_MEDIA_DIR+'/'+t.id_str+'-'+base, portrait:isPortrait(m)});
+      } else if(m.type==='video'||m.type==='animated_gif'){
+        const variants=((m.video_info&&m.video_info.variants)||[])
+          .filter(v=>v.bitrate&&v.url).sort((a,b)=>num(a.bitrate)-num(b.bitrate));
+        const best=variants[variants.length-1];
+        if(best){ const base=best.url.split('/').pop().split('?')[0];
+          out.push({kind:m.type==='animated_gif'?'gif':'video', src:TWEETS_MEDIA_DIR+'/'+t.id_str+'-'+base}); }
+      }
+    }
+    return out;
+  }
+  function profileAvatar(){ const a=state.account,p=state.profile;
+    return (p&&p.avatarMediaUrl&&a&&a.accountId) ? PROFILE_MEDIA_DIR+'/'+a.accountId+'-'+p.avatarMediaUrl.split('/').pop() : null; }
+  function profileBanner(){ const a=state.account,p=state.profile;
+    return (p&&p.headerMediaUrl&&a&&a.accountId) ? PROFILE_MEDIA_DIR+'/'+a.accountId+'-'+p.headerMediaUrl.split('/').pop()+'.jpg' : null; }
+
+  /* ===================== TEXTO + ENTITIES (RECON §2) ===================== */
+  // full_text ya viene HTML-escapado por Twitter y los indices cuentan sobre esa
+  // cadena (verificado: urls 4742/4742). Insertamos segmentos tal cual; escapamos
+  // sólo los campos crudos de entities.
+  function renderText(t){
+    const cps=Array.from(t.full_text||''); const e=t.entities||{}; const ents=[];
+    for(const u of (e.urls||[]))          ents.push({s:+u.indices[0],en:+u.indices[1],type:'url',d:u});
+    for(const m of (e.user_mentions||[])) ents.push({s:+m.indices[0],en:+m.indices[1],type:'mention',d:m});
+    for(const h of (e.hashtags||[]))      ents.push({s:+h.indices[0],en:+h.indices[1],type:'hashtag',d:h});
+    for(const sy of (e.symbols||[]))      ents.push({s:+sy.indices[0],en:+sy.indices[1],type:'symbol',d:sy});
+    const media=(t.extended_entities&&t.extended_entities.media)||e.media||[];
+    for(const md of media) if(md.indices) ents.push({s:+md.indices[0],en:+md.indices[1],type:'media',d:md});
+    ents.sort((a,b)=>a.s-b.s);
+    let html='',i=0;
+    for(const ent of ents){ if(ent.s<i||!Number.isFinite(ent.s)) continue;
+      html+=slice(cps,i,ent.s); html+=entityHtml(ent); i=ent.en; }
+    html+=slice(cps,i,cps.length);
+    return html;
+  }
+  function slice(cps,a,b){ return cps.slice(a,b).join('').replace(/\n/g,'<br>'); }
+  function entityHtml(ent){
+    const d=ent.d;
+    switch(ent.type){
+      case 'url':{ const disp=escapeHtml(d.display_url||d.expanded_url||d.url);
+        const href=escapeHtml(d.expanded_url||d.url);
+        return '<a class="lnk" href="'+href+'" target="_blank" rel="noopener noreferrer">'+disp+'</a>'; }
+      case 'mention': return '<span class="mention" data-sn="'+escapeHtml(d.screen_name)+'">@'+escapeHtml(d.screen_name)+'</span>';
+      case 'hashtag': return '<span class="hashtag" data-tag="'+escapeHtml(d.text)+'">#'+escapeHtml(d.text)+'</span>';
+      case 'symbol':  return '$'+escapeHtml(d.text);
+      case 'media':   return '';
+      default:        return '';
+    }
+  }
+
+  /* ===================== CARD ===================== */
+  function mediaHtml(t){
+    if(!t._media.length) return '';
+    const cls='g'+Math.min(t._media.length,4); let inner='';
+    for(const m of t._media){
+      if(m.kind==='photo') inner+='<img data-media loading="lazy" alt="" src="'+escapeHtml(m.src)+'">';
+      else if(m.kind==='gif') inner+='<video data-media data-gif muted loop playsinline preload="metadata" src="'+escapeHtml(m.src)+'"></video>';
+      else inner+='<video data-media controls muted loop playsinline preload="metadata" src="'+escapeHtml(m.src)+'"></video>';
+    }
+    return '<div class="tw-media '+cls+'">'+inner+'</div>';
+  }
+  // ¿enlaza/cita un tweet que NO está en el archivo? (RECON §7: avisar, no simular)
+  function linksAbsentTweet(t){
+    if(t._kind==='retweet') return false;   // los RT ya llevan su propia nota
+    const urls=(t.entities&&t.entities.urls)||[];
+    for(const u of urls){
+      const m=(u.expanded_url||'').match(/(?:twitter\.com|x\.com)\/[^/]+\/status\/(\d+)/i);
+      if(m && !state.byId.has(m[1])) return true;
+    }
+    return false;
+  }
+  function notesHtml(t, opts){
+    let n='';
+    if(t._kind==='reply' && !(opts&&opts.hideReplyNote)){
+      const sn=t.in_reply_to_screen_name, pid=t.in_reply_to_status_id_str, here=state.byId.has(pid);
+      // si el padre está en el archivo, saltamos a él local; si no, link al original en X
+      const link = here
+        ? ' · <a href="#'+escapeHtml((state.account&&state.account.username||'')+'/status/'+pid)+'">ver el tweet</a>'
+        : ' · <a href="https://x.com/'+(sn?escapeHtml(sn):'i')+'/status/'+escapeHtml(pid)+'" target="_blank" rel="noopener noreferrer">ver en X ↗</a>';
+      n+='<div class="tw-note">En respuesta a '+(sn?'@'+escapeHtml(sn):'otro tweet')+(here?'':' · ese tweet no está en el archivo')+link+'</div>';
+    }
+    if(t._kind==='retweet'){
+      const trunc=/…\s*$/.test(t.full_text||'');
+      n+='<div class="tw-note">Retweet · el original no está en el archivo'+(trunc?' · texto recortado':'')+'</div>';
+    }
+    if(linksAbsentTweet(t)) n+='<div class="tw-note">Enlaza un tweet que no está en el archivo</div>';
+    return n;
+  }
+  // Encabezado editorial: la FECHA en serif (sacamos el autor repetido — todo es de @xelaing)
+  function cardHtml(t, opts){
+    const a=state.account||{};
+    const badge=t._kind==='retweet'?'<span class="tw-badge">retweet</span>'
+              :t._kind==='reply'?'<span class="tw-badge">respuesta</span>':'';
+    return '<article class="tw kind-'+t._kind+'" data-id="'+escapeHtml(t.id_str)+'">'
+      +'<div class="tw-h"><a class="tw-date" href="#'+escapeHtml((a.username||'')+'/status/'+t.id_str)+'">'+fmtDate(t._ts)+'</a>'+badge+'</div>'
+      +notesHtml(t,opts)
+      +'<div class="tw-text">'+renderText(t)+'</div>'
+      +mediaHtml(t)
+      +'<div class="tw-meta"><span>♥ '+fmtCount(num(t.favorite_count))+'</span><span>↻ '+fmtCount(num(t.retweet_count))+'</span></div>'
+      +'</article>';
+  }
+  function onMediaError(ev){
+    const el=ev.target; const note=document.createElement('div');
+    note.className='media-missing'; note.textContent='media no disponible en el archivo';
+    if(el.parentNode) el.parentNode.replaceChild(note, el);
+  }
+  const videoObserver=('IntersectionObserver' in window)
+    ? new IntersectionObserver((es)=>{ for(const e of es){ const v=e.target;
+        if(e.isIntersecting){ if(v.dataset.userPaused!=='1') v.play().catch(()=>{}); }
+        else if(!v.paused) v.pause(); } },{threshold:0.5})
+    : null;
+  function wireMedia(root){
+    root.querySelectorAll('[data-media]').forEach(el=>el.addEventListener('error', onMediaError));
+    if(videoObserver) root.querySelectorAll('video').forEach(v=>{
+      v.addEventListener('pause',()=>{ if(!v.ended&&!v.seeking) v.dataset.userPaused='1'; });
+      v.addEventListener('play',()=>{ v.dataset.userPaused='0'; });
+      videoObserver.observe(v);
+    });
+  }
+
+  /* ===================== LISTA INFINITA (append-only) ===================== */
+  // render recibe (item, indiceGlobal, items) para poder intercalar divisores de año.
+  function makeList(container, perPage){
+    const sentinel=document.createElement('div'); sentinel.className='sentinel';
+    container.after(sentinel);
+    const L={items:[], cursor:0, render:null, perPage:perPage||25};
+    L.set=(items, render)=>{ L.items=items; L.render=render; L.cursor=0; container.innerHTML=''; L.more(); };
+    L.more=()=>{ const start=L.cursor; const next=L.items.slice(start, start+L.perPage); if(!next.length) return;
+      const tpl=document.createElement('template');
+      tpl.innerHTML=next.map((it,j)=>L.render(it, start+j, L.items)).join('');
+      wireMedia(tpl.content); container.appendChild(tpl.content); L.cursor+=next.length; };
+    if('IntersectionObserver' in window){
+      const io=new IntersectionObserver((es)=>{ for(const e of es) if(e.isIntersecting) L.more(); },{rootMargin:'900px 0px'});
+      io.observe(sentinel);
+    }
+    return L;
+  }
+  let feedList, threadsList, likesList;
+
+  /* ===================== FILTROS + ÉPOCAS + TIMELINE ===================== */
+  function buildFilterUI(){
+    const epochChips='<button class="epoch-chip active" data-year="">Todo</button>'
+      + state.years.map(y=>'<button class="epoch-chip" data-year="'+y+'">'+y+'</button>').join('');
+    const mos=MES_LARGO.map((m,i)=>'<option value="'+(i+1)+'">'+m+'</option>').join('');
+    document.getElementById('filters').innerHTML=
+      '<div class="search-row"><input id="f-q" type="search" placeholder="Buscar en tus tweets…" autocomplete="off" spellcheck="false">'
+      +'<button id="f-order" type="button" title="Orden cronológico">↓ nuevos</button>'
+      +'<button id="f-toggle" type="button">Filtros</button></div>'
+      +'<div class="epochs" id="epochs">'+epochChips+'</div>'
+      +'<div id="adv" hidden><div class="frow">'
+      +'<select id="f-month"><option value="">Todos los meses</option>'+mos+'</select>'
+      +'<label><input type="checkbox" id="f-own" checked> Propios</label>'
+      +'<label><input type="checkbox" id="f-reply" checked> Respuestas</label>'
+      +'<label><input type="checkbox" id="f-rt" checked> RTs</label>'
+      +'<label><input type="checkbox" id="f-media"> Con media</label>'
+      +'<label><input type="checkbox" id="f-geo"> Con ubicación</label>'
+      +'<button id="f-clear" type="button">Limpiar todo</button>'
+      +'</div></div>';
+    document.getElementById('f-q').addEventListener('input', applyFilters);
+    document.getElementById('f-toggle').addEventListener('click', ()=>{
+      const adv=document.getElementById('adv'); adv.hidden=!adv.hidden; });
+    document.getElementById('f-order').addEventListener('click', ()=>{
+      state.order = state.order==='asc' ? 'desc' : 'asc';
+      document.getElementById('f-order').textContent = state.order==='asc' ? '↑ viejos' : '↓ nuevos';
+      applyFilters();
+    });
+    ['f-month','f-own','f-reply','f-rt','f-media','f-geo'].forEach(id=>
+      document.getElementById(id).addEventListener('change', applyFilters));
+    document.getElementById('epochs').addEventListener('click', e=>{
+      const b=e.target.closest('.epoch-chip'); if(!b) return;
+      state.year = b.dataset.year ? +b.dataset.year : null; applyFilters();
+    });
+    document.getElementById('f-clear').addEventListener('click', ()=>{
+      state.year=null; state.order='desc'; document.getElementById('f-order').textContent='↓ nuevos';
+      document.getElementById('f-month').value='';
+      ['f-own','f-reply','f-rt'].forEach(i=>document.getElementById(i).checked=true);
+      ['f-media','f-geo'].forEach(i=>document.getElementById(i).checked=false);
+      document.getElementById('f-q').value=''; applyFilters();
+    });
+  }
+  function yearDivider(y){ return '<div class="epoch-div">'+y+'</div>'; }
+  function applyFilters(){
+    const val=id=>document.getElementById(id);
+    const month=val('f-month').value;
+    const kOwn=val('f-own').checked, kRep=val('f-reply').checked, kRt=val('f-rt').checked;
+    const onlyMedia=val('f-media').checked, onlyGeo=val('f-geo').checked;
+    const terms=val('f-q').value.toLowerCase().trim().split(/\s+/).filter(Boolean);
+    const mo=month?+month:null, yr=state.year;
+    const list=state.tweets.filter(t=>{
+      if(t._kind==='own'&&!kOwn) return false;
+      if(t._kind==='reply'&&!kRep) return false;
+      if(t._kind==='retweet'&&!kRt) return false;
+      if(yr&&t._year!==yr) return false;
+      if(mo&&t._month!==mo) return false;
+      if(onlyMedia&&!t._hasMedia) return false;
+      if(onlyGeo&&!t._geo) return false;
+      for(const term of terms) if(!t._search.includes(term)) return false;
+      return true;
+    });
+    // resalta la época activa
+    document.querySelectorAll('#epochs .epoch-chip').forEach(b=>
+      b.classList.toggle('active', (b.dataset.year?+b.dataset.year:null)===yr));
+    const active=(yr||mo||!kOwn||!kRep||!kRt||onlyMedia||onlyGeo||terms.length);
+    if(state.order==='asc') list.reverse();   // state.tweets viene desc; reverse → asc
+    document.getElementById('count').textContent=nf(list.length)+' tweets'+(active?' · filtrados':'');
+    // render con divisor de año al cambiar de época (lista cronológica, contigua por año)
+    feedList.set(list, (t,i,arr)=> (i===0||arr[i-1]._year!==t._year ? yearDivider(t._year) : '') + cardHtml(t));
+    window.scrollTo(0,0);
+  }
+  function goSearch(q){ showView('timeline'); document.getElementById('f-q').value=q;
+    state.year=null; applyFilters(); }
+
+  /* ===================== SELF-THREADS (RECON §4b) ===================== */
+  function computeThreads(){
+    if(state.threads) return state.threads;
+    const byId=state.byId, parentOf=new Map(), childrenOf=new Map();
+    for(const t of state.tweets){ const p=t.in_reply_to_status_id_str;
+      if(p&&byId.has(p)){ parentOf.set(t.id_str,p);
+        if(!childrenOf.has(p)) childrenOf.set(p,[]); childrenOf.get(p).push(t.id_str); } }
+    const inGraph=new Set([...parentOf.keys(),...childrenOf.keys()]);
+    const seen=new Set(), threads=[];
+    for(const id of inGraph){ if(seen.has(id)) continue;
+      const comp=[], stack=[id]; seen.add(id);
+      while(stack.length){ const cur=stack.pop(); comp.push(cur);
+        const p=parentOf.get(cur); if(p&&!seen.has(p)){ seen.add(p); stack.push(p); }
+        for(const c of (childrenOf.get(cur)||[])) if(!seen.has(c)){ seen.add(c); stack.push(c); } }
+      if(comp.length>=2) threads.push(comp.map(x=>byId.get(x)).filter(Boolean).sort((a,b)=>a._ts-b._ts));
+    }
+    threads.sort((a,b)=>b[b.length-1]._ts-a[a.length-1]._ts);
+    state.threads=threads; return threads;
+  }
+  function threadHtml(thread){
+    const y=new Date(thread[0]._ts).getFullYear();
+    return '<div class="thread"><div class="thread-head">🧵 Hilo · '+thread.length+' tweets · '+y+'</div>'
+      +thread.map(t=>cardHtml(t,{hideReplyNote:true})).join('')+'</div>';
+  }
+  function renderThreads(){
+    const threads=computeThreads(); const tw=threads.reduce((a,t)=>a+t.length,0);
+    document.getElementById('threads-info').textContent=
+      nf(threads.length)+' hilos propios reconstruidos · '+nf(tw)+' tweets enhebrados';
+    threadsList.set(threads, threadHtml);
+  }
+
+  /* ===================== TAL DÍA COMO HOY ===================== */
+  function renderOnThisDay(dateStr){
+    let mm,dd;
+    if(dateStr){ const p=dateStr.split('-'); mm=+p[1]; dd=+p[2]; }
+    else { const now=new Date(); mm=now.getMonth()+1; dd=now.getDate(); }
+    const iso=String(new Date().getFullYear())+'-'+String(mm).padStart(2,'0')+'-'+String(dd).padStart(2,'0');
+    document.getElementById('otd-controls').innerHTML=
+      '<span>Lo que tuiteaste un <b>'+dd+' de '+MES_LARGO[mm-1]+'</b> en años anteriores</span>'
+      +'<input id="otd-date" type="date" value="'+iso+'">';
+    document.getElementById('otd-date').addEventListener('change', e=>renderOnThisDay(e.target.value));
+    const key=mm*100+dd;
+    const matches=state.tweets.filter(t=>t._monthday===key).sort((a,b)=>b._ts-a._ts);
+    const cont=document.getElementById('otd');
+    if(!matches.length){ cont.innerHTML='<div class="count">No tuiteaste nunca un '+dd+' de '+MES_LARGO[mm-1]+'.</div>'; return; }
+    let html='<div class="count">'+nf(matches.length)+' tweets</div>', curYear=null;
+    for(const t of matches){ if(t._year!==curYear){ curYear=t._year; html+='<div class="year-head">'+curYear+'</div>'; } html+=cardHtml(t); }
+    const tpl=document.createElement('template'); tpl.innerHTML=html;
+    cont.innerHTML=''; wireMedia(tpl.content); cont.appendChild(tpl.content);
+  }
+
+  /* ===================== LIKES ===================== */
+  function likeHtml(l){
+    if(l.fullText) return '<div class="like"><div class="like-text">'+l.fullText.replace(/\n/g,'<br>')+'</div>'
+      +'<a class="like-link" href="'+escapeHtml(l.expandedUrl||'#')+'" target="_blank" rel="noopener noreferrer">ver original ↗ (link probablemente muerto offline)</a></div>';
+    return '<div class="like like-missing"><div class="like-text">(sin texto — tweet borrado o cuenta protegida)</div>'
+      +'<a class="like-link" href="'+escapeHtml(l.expandedUrl||'#')+'" target="_blank" rel="noopener noreferrer">'+escapeHtml(l.tweetId||'')+' ↗</a></div>';
+  }
+  async function initLikesView(){
+    if(state.likes) return;
+    document.getElementById('likes-count').innerHTML='<span class="spinner"></span>Cargando likes…';
+    const likes=await ensureLikes();
+    const withText=likes.filter(l=>l.fullText).length;
+    document.getElementById('likes-controls').innerHTML=
+      '<div class="search-row"><input id="lq" type="search" placeholder="Buscar en tus likes…" autocomplete="off" spellcheck="false"></div>';
+    const apply=()=>{ const terms=document.getElementById('lq').value.toLowerCase().trim().split(/\s+/).filter(Boolean);
+      const list=terms.length?likes.filter(l=>terms.every(t=>l._search.includes(t))):likes;
+      document.getElementById('likes-count').textContent=nf(list.length)+' likes'+(terms.length?' · filtrados':'')
+        +' · '+nf(likes.length-withText)+' sin texto en el archivo';
+      likesList.set(list, likeHtml); window.scrollTo(0,0); };
+    document.getElementById('lq').addEventListener('input', apply);
+    apply();
+  }
+
+  /* ===================== STATS ===================== */
+  function computeStats(){
+    if(state.stats) return state.stats;
+    const perYear=new Map(), tags=new Map(), mentions=new Map();
+    let minTs=Infinity, maxTs=-Infinity;
+    for(const t of state.tweets){
+      perYear.set(t._year,(perYear.get(t._year)||0)+1);
+      if(t._ts<minTs) minTs=t._ts; if(t._ts>maxTs) maxTs=t._ts;
+      const e=t.entities||{};
+      for(const h of (e.hashtags||[])){ const k=h.text.toLowerCase(); tags.set(k,(tags.get(k)||0)+1); }
+      for(const m of (e.user_mentions||[])){ const k=m.screen_name; mentions.set(k,(mentions.get(k)||0)+1); }
+    }
+    const nonRt=state.tweets.filter(t=>t._kind!=='retweet');
+    const top=(map,n)=>[...map.entries()].sort((a,b)=>b[1]-a[1]).slice(0,n);
+    state.stats={ perYear:[...perYear.entries()].sort((a,b)=>a[0]-b[0]), minTs, maxTs,
+      topFav:[...nonRt].sort((a,b)=>num(b.favorite_count)-num(a.favorite_count)).slice(0,10),
+      topRt:[...nonRt].sort((a,b)=>num(b.retweet_count)-num(a.retweet_count)).slice(0,10),
+      topTags:top(tags,25), topMentions:top(mentions,25) };
+    return state.stats;
+  }
+  function renderStats(){
+    const s=computeStats(), c=state.counts;
+    const maxY=Math.max(...s.perYear.map(e=>e[1]));
+    const bars=s.perYear.map(([y,n])=>'<div class="bar-row" data-year="'+y+'"><span class="yr">'+y+'</span>'
+      +'<span class="bar" style="width:'+Math.round(n/maxY*100)+'%"></span><span class="bn">'+nf(n)+'</span></div>').join('');
+    const topTweet=(t)=>'<div class="toprow"><a href="#'+escapeHtml((state.account.username||'')+'/status/'+t.id_str)+'">'
+      +'♥ '+fmtCount(num(t.favorite_count))+' · ↻ '+fmtCount(num(t.retweet_count))+'</a> <span class="tn">'+fmtDate(t._ts)+'</span>'
+      +'<div>'+renderText(t)+'</div></div>';
+    const chips=(arr,pre)=>arr.map(([k,n])=>'<span class="chip" data-q="'+escapeHtml(pre+k)+'">'+pre+escapeHtml(k)+' <b>'+n+'</b></span>').join('');
+    document.getElementById('stats').innerHTML=
+      '<h2>Resumen</h2><div class="stat-cards">'
+      +'<div class="stat-card"><b>'+nf(state.tweets.length)+'</b><span>tweets</span></div>'
+      +'<div class="stat-card"><b>'+nf(c.own)+'</b><span>propios</span></div>'
+      +'<div class="stat-card"><b>'+nf(c.reply)+'</b><span>respuestas</span></div>'
+      +'<div class="stat-card"><b>'+nf(c.retweet)+'</b><span>retweets</span></div>'
+      +'<div class="stat-card"><b>'+nf(c.media)+'</b><span>con media</span></div></div>'
+      +'<div class="count">Desde el '+fmtDate(s.minTs)+' hasta el '+fmtDate(s.maxTs)+'.</div>'
+      +'<h2>Tweets por año</h2>'+bars
+      +'<h2>Top por favoritos</h2>'+s.topFav.map(topTweet).join('')
+      +'<h2>Top por retweets</h2>'+s.topRt.map(topTweet).join('')
+      +'<h2>Hashtags más usados</h2><div class="chips">'+chips(s.topTags,'#')+'</div>'
+      +'<h2>A quién mencionás más</h2><div class="chips">'+chips(s.topMentions,'@')+'</div>';
+  }
+
+  /* ===================== PERFIL ===================== */
+  function renderProfile(){
+    const a=state.account||{}, p=state.profile||{};
+    const banner=profileBanner(), avatar=profileAvatar(), desc=p.description||{};
+    const join=a.createdAt?new Date(a.createdAt):null;
+    const following=num((((state.cfg.dataTypes.following||{}).files||[])[0]||{}).count);
+    const followers=num((((state.cfg.dataTypes.follower||{}).files||[])[0]||{}).count);
+    const el=document.getElementById('profile');
+    el.innerHTML=
+      '<div id="banner"'+(banner?' style="background-image:url(\''+escapeHtml(banner)+'\')"':'')+'></div>'
+      +'<div id="avatar"'+(avatar?' style="background-image:url(\''+escapeHtml(avatar)+'\')"':'')+'></div>'
+      +'<div id="pname">'+escapeHtml(a.accountDisplayName||a.username||'')+'</div>'
+      +'<div id="phandle">@'+escapeHtml(a.username||'')+'</div>'
+      +(desc.bio?'<div id="pbio">'+escapeHtml(desc.bio)+'</div>':'')
+      +'<div id="pmeta">'+(desc.location?'<span>📍 '+escapeHtml(desc.location)+'</span>':'')
+        +(join?'<span>🗓 En X desde '+MES_LARGO[join.getMonth()]+' de '+join.getFullYear()+'</span>':'')+'</div>'
+      +'<div id="pcounts"><span><b>'+nf(state.tweets.length)+'</b>tweets</span>'
+        +'<span><b>'+fmtCount(following)+'</b>siguiendo</span>'
+        +'<span><b>'+fmtCount(followers)+'</b>seguidores</span></div>';
+    el.hidden=false;
+    el.querySelectorAll('#banner,#avatar').forEach(d=>{
+      const url=(d.style.backgroundImage.match(/url\(['"]?(.*?)['"]?\)/)||[])[1]; if(!url) return;
+      const probe=new Image(); probe.onerror=()=>{ d.style.backgroundImage='none'; }; probe.src=url;
+    });
+    document.title='@'+(a.username||'xelaing')+' · archivo';
+  }
+
+  /* ===================== PERMALINK ===================== */
+  const permaEl=document.getElementById('permalink'), permaInner=document.getElementById('permalink-inner');
+  function openPermalink(id){
+    const t=state.byId.get(id); if(!t) return;
+    permaInner.innerHTML='<button class="back" type="button">← volver</button>'
+      +cardHtml(t).replace('<div class="tw-meta">','<div class="tw-meta"><span>'+fmtDateTime(t._ts)+'</span>');
+    wireMedia(permaInner);
+    permaInner.querySelector('.back').addEventListener('click',()=>{ location.hash=''; });
+    permaEl.classList.add('open');
+  }
+  function closePermalink(){ permaEl.classList.remove('open'); permaInner.innerHTML=''; }
+  function handleRoute(){
+    const h=decodeURIComponent(location.hash.replace(/^#/,''));
+    const m=h.match(/status\/(\d+)/);
+    if(m) openPermalink(m[1]); else closePermalink();
+  }
+
+  /* ===================== VIEW SWITCH ===================== */
+  function showView(name){
+    state.currentView=name;
+    document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.view===name));
+    document.querySelectorAll('.view').forEach(v=>{ v.hidden=(v.id!=='view-'+name); });
+    window.scrollTo(0,0);
+    if(name==='threads' && !state.threads) renderThreads();
+    else if(name==='onthisday' && !document.getElementById('otd').dataset.rendered){
+      renderOnThisDay(); document.getElementById('otd').dataset.rendered='1'; }
+    else if(name==='likes') initLikesView();
+    else if(name==='stats' && !state.stats) renderStats();
+  }
+
+  /* ===================== INIT ===================== */
+  const statusEl=document.getElementById('status');
+  async function init(){
+    try{
+      const cfg0=window.__THAR_CONFIG||{};
+      const tfiles=(((cfg0.dataTypes||{}).tweets||{}).files)||[];
+      const n=num((tfiles[0]||{}).count);
+      statusEl.innerHTML='<span class="spinner"></span>Cargando '+(n?nf(n):'tus')+' tweets… (unos segundos)';
+      await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+
+      const t0=performance.now();
+      const raw=await loadArchive(); buildIndex(raw);
+      console.log('[archivo] '+state.tweets.length+' tweets en '+Math.round(performance.now()-t0)+' ms', state.counts);
+
+      statusEl.hidden=true;
+      document.getElementById('nav').hidden=false;
+      document.getElementById('views').hidden=false;
+      renderProfile(); buildFilterUI();
+
+      feedList=makeList(document.getElementById('feed'),25);
+      threadsList=makeList(document.getElementById('threads'),12);
+      likesList=makeList(document.getElementById('likes'),50);
+      applyFilters();
+
+      document.querySelectorAll('.nav-btn').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
+      document.getElementById('views').addEventListener('click', e=>{
+        const mn=e.target.closest('.mention'); if(mn){ goSearch('@'+mn.dataset.sn); return; }
+        const hs=e.target.closest('.hashtag'); if(hs){ goSearch('#'+hs.dataset.tag); return; }
+        const yr=e.target.closest('.bar-row'); if(yr){ showView('timeline'); state.year=+yr.dataset.year;
+          document.getElementById('f-q').value=''; applyFilters(); return; }
+        const chip=e.target.closest('.chip'); if(chip){ goSearch(chip.dataset.q); return; }
+        if(e.target.closest('a,video,img')) return;
+        const art=e.target.closest('.tw'); if(art) location.hash=(state.account&&state.account.username||'')+'/status/'+art.dataset.id;
+      });
+      // links http(s): abrir SIEMPRE en pestaña nueva (bajo file:// target=_blank a veces no dispara)
+      document.addEventListener('click', e=>{
+        const a=e.target.closest('a'); if(!a) return;
+        const href=a.getAttribute('href')||'';
+        if(/^https?:/i.test(href)){ e.preventDefault(); window.open(href, '_blank', 'noopener'); }
+      });
+      // cerrar el permalink con ESC o click en el fondo
+      window.addEventListener('keydown', e=>{ if(e.key==='Escape' && permaEl.classList.contains('open')) location.hash=''; });
+      permaEl.addEventListener('click', e=>{ if(e.target===permaEl) location.hash=''; });
+      window.addEventListener('hashchange', handleRoute);
+      handleRoute();
+    }catch(err){
+      console.error(err);
+      statusEl.innerHTML='<b>Error al cargar el archivo.</b><br>'+escapeHtml(err.message)
+        +'<br><br>Asegurate de que index.html esté en la raíz del export, al lado de “Your archive.html”.';
+    }
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); else init();
+
+  })();
+  </script>
+</body>
+</html>

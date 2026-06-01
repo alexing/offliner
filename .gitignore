@@ -1,0 +1,13 @@
+# Tus datos personales del archivo (X / Facebook) — NUNCA se commitean
+data/
+
+# Config local de Claude Code (permisos de sesión, etc.)
+.claude/
+
+# macOS
+.DS_Store
+
+# Notas de trabajo en .md generadas por Claude (incluye RECON.md).
+# El README sí se versiona.
+*.md
+!README.md
