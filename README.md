@@ -1,82 +1,83 @@
 # offliner
 
-Un visor **offline y privado** de tu archivo de X (Twitter) — un baúl de recuerdos
-para abrir hoy y dentro de diez años. Un solo `index.html`, sin build, sin
-dependencias, sin red. Lo abrís con doble clic y listo.
+An **offline and private** viewer for your X (Twitter) archive — a memory chest
+to open today and ten years from now. A single `index.html`, no build, no
+dependencies, no network. Open it with a double click and you're done.
 
-> Pensado también para sumar, más adelante, tu archivo de **Facebook**. De ahí el
-> nombre: lo que bajaste de las redes, para verlo *offline*.
+> Also designed to add your **Facebook** archive later on. Hence the name: what
+> you downloaded from social media, to view it *offline*.
 
-## Por qué
+## Why
 
-El export oficial de X es un `.zip` con miles de `.js` y un visor feo y limitado.
-`offliner` lo transforma en algo lindo de habitar: navegás por **épocas** (año a
-año), reconstruye tus **hilos**, te muestra **stats**, **"tal día como hoy"**, tus
-**likes**, y todo con filtros y búsqueda — sin que un solo byte salga de tu máquina.
+The official X export is a `.zip` full of thousands of `.js` files and an ugly,
+limited viewer. `offliner` turns it into something pleasant to inhabit: you browse
+through **eras** (year by year), it rebuilds your **threads**, shows you **stats**,
+**"on this day"**, your **likes**, all with filters and search — without a single
+byte leaving your machine.
 
-## Privacidad (lo más importante)
+## Privacy (the most important part)
 
-- **100% client-side, cero red.** No hay analytics, ni telemetría, ni requests
-  externos. Una CSP (`connect-src 'none'`) bloquea fetch/XHR/websockets.
-- **Tus datos nunca se versionan.** La carpeta `data/` está en `.gitignore`: tu
-  archivo personal se queda en tu disco, nunca en GitHub.
-- Fuentes del sistema (sin CDNs). Funciona con `file://` real, sin servidor.
+- **100% client-side, zero network.** No analytics, no telemetry, no external
+  requests. A CSP (`connect-src 'none'`) blocks fetch/XHR/websockets.
+- **Your data is never versioned.** The `data/` folder is in `.gitignore`: your
+  personal archive stays on your disk, never on GitHub.
+- System fonts (no CDNs). Works with real `file://`, no server needed.
 
-## Cómo usarlo
+## How to use it
 
-1. Descargá tu archivo de X: *Settings → Your account → Download an archive of your data*.
-2. Descomprimílo. Vas a tener una carpeta tipo `twitter-2026-05-31-abc123…/`.
-3. Movéla dentro de `data/` y renombrala a **`twitter`** (queda `data/twitter/`,
-   con su `Your archive.html`, `assets/` y `data/` adentro).
-   - Si preferís otro nombre/ubicación, cambiá la constante `EXPORT_ROOT` arriba
-     de todo en `index.html`.
-4. Abrí **`index.html`** con doble clic.
+1. Download your X archive: *Settings → Your account → Download an archive of your data*.
+2. Unzip it. You'll get a folder like `twitter-2026-05-31-abc123…/`.
+3. Move it into `data/` and rename it to **`twitter`** (so it becomes `data/twitter/`,
+   with its `Your archive.html`, `assets/` and `data/` inside).
+   - If you prefer a different name/location, change the `EXPORT_ROOT` constant at
+     the very top of `index.html`.
+4. Open **`index.html`** with a double click.
 
 ```
 offliner/
-├── index.html          ← el visor (esto es lo único que se versiona como código)
+├── index.html          ← the viewer (the only thing versioned as code)
 ├── README.md
 ├── .gitignore
-└── data/               ← tus archivos (ignorado por git)
-    └── twitter/        ← acá va tu export de X
+└── data/               ← your archives (ignored by git)
+    └── twitter/        ← your X export goes here
         ├── Your archive.html
         ├── assets/
         └── data/       ← manifest.js, tweets.js, tweets_media/, …
 ```
 
-## Qué hace
+## What it does
 
-- **Tweets** — timeline cronológico con **divisores de año** y una tira de épocas
-  para saltar; orden ascendente/descendente; filtros por año/mes, tipo
-  (propios/respuestas/RTs), con media y con ubicación; búsqueda full-text (incluye
-  los dominios de los links).
-- **Hilos** — reconstruye tus *self-threads* encadenando respuestas a vos mismo que
-  estén dentro del archivo.
-- **Tal día como hoy** — efemérides por mes-día, con selector de fecha.
-- **Likes** — la lista de tus likes con su texto (los que el archivo no trae los
-  marca honestamente).
-- **Stats** — totales, tweets por año, top por favoritos/RTs, hashtags y menciones
-  más usados.
-- **Media local** — fotos, videos y gifs servidos desde tu propio archivo.
-- **Permalinks** por tweet (con `Esc`/clic afuera para cerrar).
+- **Tweets** — chronological timeline with **year dividers** and an era strip to
+  jump around; ascending/descending order; filters by year/month, type
+  (own/replies/RTs), with media and with location; full-text search (includes the
+  domains of the links).
+- **Threads** — rebuilds your *self-threads* by chaining together replies to
+  yourself that are inside the archive.
+- **On this day** — anniversaries by month-day, with a date picker.
+- **Likes** — the list of your likes with their text (it honestly marks the ones
+  the archive doesn't include).
+- **Stats** — totals, tweets per year, top by favorites/RTs, most used hashtags
+  and mentions.
+- **Local media** — photos, videos and gifs served from your own archive.
+- **Permalinks** per tweet (with `Esc`/click outside to close).
 
-## Honestidad sobre los límites
+## Honesty about the limits
 
-El export sólo tiene **tu lado**. `offliner` nunca inventa lo que no está:
+The export only has **your side**. `offliner` never invents what isn't there:
 
-- Las **respuestas a terceros** muestran tu tweet y marcan que el original no está
-  en el archivo (con un link "ver en X" por si querés abrirlo online).
-- Los **retweets** muestran el texto tal cual (a veces recortado con `…`); el
-  original no viene embebido.
-- Los **quotes** enlazan al tweet citado pero avisan que no está en el archivo.
+- **Replies to others** show your tweet and mark that the original isn't in the
+  archive (with a "view on X" link in case you want to open it online).
+- **Retweets** show the text as-is (sometimes truncated with `…`); the original
+  isn't embedded.
+- **Quotes** link to the quoted tweet but warn that it isn't in the archive.
 
 ## Roadmap
 
-- [ ] Módulo de **Facebook** (`data/facebook/`), reusando el mismo core.
+- [ ] **Facebook** module (`data/facebook/`), reusing the same core.
 
-## Créditos
+## Credits
 
-Inspirado en la idea de [ronilaukkarinen/tweets](https://github.com/ronilaukkarinen/tweets).
-El formato del export de X está documentado en `RECON.md` (local, no versionado).
+Inspired by the idea of [ronilaukkarinen/tweets](https://github.com/ronilaukkarinen/tweets).
+The X export format is documented in `RECON.md` (local, not versioned).
 
-Uso personal.
+Personal use.
